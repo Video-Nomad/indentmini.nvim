@@ -2,6 +2,7 @@ local api, UP, DOWN, INVALID = vim.api, -1, 1, -1
 local buf_set_extmark, set_provider = api.nvim_buf_set_extmark, api.nvim_set_decoration_provider
 local ns = api.nvim_create_namespace('IndentLine')
 local ffi, treesitter = require('ffi'), vim.treesitter
+local enabled = false
 local opt = {
   only_current = false,
   exclude = { 'dashboard', 'lazy', 'help', 'nofile', 'terminal', 'prompt', 'qf' },
@@ -182,9 +183,9 @@ end
 
 local function out_current_range(row)
   return opt.only_current
-    and context.range_srow
-    and context.range_erow
-    and (row < context.range_srow or row > context.range_erow)
+      and context.range_srow
+      and context.range_erow
+      and (row < context.range_srow or row > context.range_erow)
 end
 
 local function find_current_range(currow_indent, currow)
@@ -192,8 +193,8 @@ local function find_current_range(currow_indent, currow)
   local range_fn = function(indent, empty, row)
     local level = math.ceil(indent / context.tabstop)
     if
-      ((not empty and not context.mixup) and indent < currow_indent)
-      or (context.mixup and level < curlevel)
+        ((not empty and not context.mixup) and indent < currow_indent)
+        or (context.mixup and level < curlevel)
     then
       if row < context.currow then
         context.range_srow = row
@@ -209,7 +210,7 @@ local function find_current_range(currow_indent, currow)
     context.range_erow = context.count - 1
   end
   context.cur_inlevel = context.mixup and math.ceil(currow_indent / context.tabstop)
-    or math.floor(currow_indent / context.step)
+      or math.floor(currow_indent / context.step)
 end
 
 local function on_line(_, _, bufnr, row)
@@ -230,20 +231,20 @@ local function on_line(_, _, bufnr, row)
       col = level - 1
     end
     if
-      col >= context.leftcol
-      and level >= opt.minlevel
-      and (not opt.only_current or level == context.cur_inlevel)
-      and col < sp.indent_cols
-      and (not currow_insert or col ~= context.curcol)
+        col >= context.leftcol
+        and level >= opt.minlevel
+        and (not opt.only_current or level == context.cur_inlevel)
+        and col < sp.indent_cols
+        and (not currow_insert or col ~= context.curcol)
     then
       local row_in_curblock = context.range_srow
-        and (row > context.range_srow and row <= context.range_erow)
+          and (row > context.range_srow and row <= context.range_erow)
       local higroup = row_in_curblock and level == context.cur_inlevel and 'IndentLineCurrent'
-        or 'IndentLine'
+          or 'IndentLine'
       opt.config.virt_text[1][2] = higroup
       if sp.is_empty and col > 0 then
         opt.config.virt_text_win_col = not context.mixup and i - 1 - context.leftcol
-          or (i - 1) * context.tabstop
+            or (i - 1) * context.tabstop
       end
       buf_set_extmark(bufnr, ns, row, col, opt.config)
       opt.config.virt_text_win_col = nil
@@ -253,10 +254,10 @@ end
 
 local function on_win(_, winid, bufnr, toprow, botrow)
   if
-    bufnr ~= api.nvim_get_current_buf()
-    or vim.iter(opt.exclude):find(function(v)
-      return v == vim.bo[bufnr].ft or v == vim.bo[bufnr].buftype
-    end)
+      bufnr ~= api.nvim_get_current_buf()
+      or vim.iter(opt.exclude):find(function(v)
+        return v == vim.bo[bufnr].ft or v == vim.bo[bufnr].buftype
+      end)
   then
     return false
   end
@@ -282,6 +283,28 @@ local function on_win(_, winid, bufnr, toprow, botrow)
   find_current_range(find_in_snapshot(context.currow + 1).indent, context.currow)
 end
 
+local function enable()
+  if not enabled then
+    set_provider(ns, { on_win = on_win, on_line = on_line })
+    enabled = true
+  end
+end
+
+local function disable()
+  if enabled then
+    set_provider(ns, {}) -- clears the provider
+    enabled = false
+  end
+end
+
+local function toggle()
+  if enabled then
+    disable()
+  else
+    enable()
+  end
+end
+
 return {
   setup = function(conf)
     conf = conf or {}
@@ -289,6 +312,9 @@ return {
     opt.exclude = vim.list_extend(opt.exclude, conf.exclude or {})
     opt.config.virt_text = { { conf.char or '│' } }
     opt.minlevel = conf.minlevel or 1
-    set_provider(ns, { on_win = on_win, on_line = on_line })
+    enable()  -- start enabled by default
   end,
+  enable = enable,
+  disable = disable,
+  toggle = toggle,
 }
